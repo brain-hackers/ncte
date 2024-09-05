@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright 2012 anthony cantor
  * This file is part of ncte.
  *
@@ -6,62 +6,58 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * ncte is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with ncte.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "screen.h"
+#include <assert.h>
 #include <errno.h>
 #include <stdint.h>
-#include <assert.h>
 
 #if defined(__APPLE__)
-#	include <ncurses.h>
+#include <ncurses.h>
 #else
-#	include <ncursesw/curses.h>
+#include <ncursesw/curses.h>
 #endif
 
 #include "err.h"
 
-#include "vterm_util.h"
 #include "vterm_ansi_colors.h"
+#include "vterm_util.h"
 
 #define SCN_ANSI_COLORS 8
 #define SCN_REQ_COLORS (SCN_ANSI_COLORS + 1) /* 8 ansi + default */
-#define SCN_REQ_PAIRS SCN_REQ_COLORS*SCN_REQ_COLORS
-#define SCN_TOTAL_ANSI_COLORS (SCN_ANSI_COLORS*2)
+#define SCN_REQ_PAIRS SCN_REQ_COLORS *SCN_REQ_COLORS
+#define SCN_TOTAL_ANSI_COLORS (SCN_ANSI_COLORS * 2)
 
 static VTerm *g_vt;
 
-/* just a place holder for the default 
+/* just a place holder for the default
  * ansi color, not actually the color
  * 1,1,1.
  */
-static const VTermColor DEFAULT_COLOR = {
-	.red = 1,
-	.green = 1,
-	.blue = 1
-};
+static const VTermColor DEFAULT_COLOR = {.red = 1, .green = 1, .blue = 1};
 
 int screen_init() {
 	g_vt = NULL;
 
 	initscr();
-	if(raw() == ERR) 
+	if (raw() == ERR)
 		goto fail;
-	if(noecho() == ERR) 
+	if (noecho() == ERR)
 		goto fail;
-	if(nodelay(stdscr, true) == ERR) 
+	if (nodelay(stdscr, true) == ERR)
 		goto fail;
-	if(keypad(stdscr, false) == ERR) /* libvterm interprets keys for us */
+	if (keypad(stdscr, false) == ERR) /* libvterm interprets keys for us */
 		goto fail;
-	if(nonl() == ERR) 
+	if (nonl() == ERR)
 		goto fail;
 
 	return 0;
@@ -73,7 +69,7 @@ fail:
 void screen_free() {
 	g_vt = NULL;
 
-	if(endwin() == ERR)
+	if (endwin() == ERR)
 		err_exit(0, "endwin failed!");
 }
 
@@ -83,12 +79,11 @@ void screen_set_term(VTerm *term) {
 	g_vt = term;
 	state = vterm_obtain_state(g_vt);
 	/* have to cast default_color because the api isnt const correct */
-	vterm_state_set_default_colors(state, (VTermColor *) &DEFAULT_COLOR, (VTermColor *) &DEFAULT_COLOR);	
+	vterm_state_set_default_colors(state, (VTermColor *)&DEFAULT_COLOR,
+				       (VTermColor *)&DEFAULT_COLOR);
 }
 
-void screen_dims(unsigned short *rows, unsigned short *cols) {
-	getmaxyx(stdscr, *rows, *cols);
-}
+void screen_dims(unsigned short *rows, unsigned short *cols) { getmaxyx(stdscr, *rows, *cols); }
 
 int screen_getch(int *ch) {
 	*ch = getch();
@@ -96,12 +91,12 @@ int screen_getch(int *ch) {
 	/* resize will be handled by signal
 	 * so flush out all the resize keys
 	 */
-	if(*ch == KEY_RESIZE) 
-		while(*ch == KEY_RESIZE) {
+	if (*ch == KEY_RESIZE)
+		while (*ch == KEY_RESIZE) {
 			*ch = getch();
 		}
 
-	if(*ch == ERR) 
+	if (*ch == ERR)
 		return -1;
 
 	return 0;
@@ -119,58 +114,63 @@ int screen_getch(int *ch) {
 		*msg = "terminal with more than SCN_REQ_PAIRS required";
 		break;
 	default:
-		*msg = "unknown error";	
+		*msg = "unknown error";
 	}
 } */
 
 int screen_color_start() {
-	int i,k;
+	int i, k;
 	short pair, fg, bg;
 
-	if(has_colors() == ERR) {
+	if (has_colors() == ERR) {
 		errno = SCN_ERR_COLOR_NOT_SUPPORTED;
 		goto fail;
 	}
 
-	if(start_color() == ERR) {
+	if (start_color() == ERR) {
 		errno = SCN_ERR_COLOR_NOT_SUPPORTED;
 		goto fail;
 	}
-	
-	if(use_default_colors() == ERR) {
+
+	if (use_default_colors() == ERR) {
 		errno = SCN_ERR_COLOR_NO_DEFAULT;
-		goto fail;		
+		goto fail;
 	}
-	
-	if(COLORS < SCN_REQ_COLORS-1) {
+
+	if (COLORS < SCN_REQ_COLORS - 1) {
 		errno = SCN_ERR_COLOR_COLORS;
 		goto fail;
 	}
 
 	/* for some reason we can just use pairs above 63 and its fine... */
-	if(COLOR_PAIRS < SCN_REQ_PAIRS) {
+	if (COLOR_PAIRS < SCN_REQ_PAIRS) {
 		/*errno = SCN_ERR_COLOR_PAIRS;
 		goto fail;*/
-		fprintf(stderr, "warning: your terminal may not support 81 color pairs. if problems arise, try setting TERM to 'xterm-256color'\n");
+		fprintf(stderr, "warning: your terminal may not support 81 color pairs. if "
+				"problems arise, try setting TERM to 'xterm-256color'\n");
 	}
 
-	for(i = 0; i < SCN_REQ_COLORS; i++) {
-		for(k = 0; k < SCN_REQ_COLORS; k++) {
-			pair = i*SCN_REQ_COLORS + k;
-			if(pair == 0) { /* pair 0 already set to default fg on default bg */
+	for (i = 0; i < SCN_REQ_COLORS; i++) {
+		for (k = 0; k < SCN_REQ_COLORS; k++) {
+			pair = i * SCN_REQ_COLORS + k;
+			if (pair == 0) { /* pair 0 already set to default fg on default bg */
 				continue;
 			}
-			
-			fg = ((SCN_REQ_COLORS - 1)-i > (SCN_ANSI_COLORS - 1))? -1 : (SCN_REQ_COLORS - 1)-i; /* => pair 0 = -1,-1 */
-			bg = ((SCN_REQ_COLORS - 1)-k > (SCN_ANSI_COLORS - 1))? -1 : (SCN_REQ_COLORS - 1)-k;
 
-			if(init_pair(pair, fg, bg) == ERR) {
+			fg = ((SCN_REQ_COLORS - 1) - i > (SCN_ANSI_COLORS - 1))
+				 ? -1
+				 : (SCN_REQ_COLORS - 1) - i; /* => pair 0 = -1,-1 */
+			bg = ((SCN_REQ_COLORS - 1) - k > (SCN_ANSI_COLORS - 1))
+				 ? -1
+				 : (SCN_REQ_COLORS - 1) - k;
+
+			if (init_pair(pair, fg, bg) == ERR) {
 				errno = SCN_ERR_COLOR_PAIR_INIT;
 				goto fail;
 			}
 		}
 	}
-	
+
 	return 0;
 fail:
 	return -1;
@@ -179,22 +179,21 @@ fail:
 static inline int contained(int y, int x) {
 	int maxx, maxy;
 
-	getmaxyx(stdscr, maxy, maxx);	
+	getmaxyx(stdscr, maxy, maxx);
 	return (x < maxx) && (y < maxy);
 }
 
 static void color_index_to_curses_color_index(int index, short *curs_color, short *bright) {
-	
+
 	assert(index >= -1 && index < 16);
-	
-	if(index > 7) {
-		index = index%8;
+
+	if (index > 7) {
+		index = index % 8;
 		*bright = 1;
-	}
-	else
+	} else
 		*bright = 0;
 
-	switch(index) {
+	switch (index) {
 	case -1:
 		*curs_color = 0;
 		break;
@@ -227,22 +226,22 @@ static void color_index_to_curses_color_index(int index, short *curs_color, shor
 static int to_curses_color(VTermColor color, short *curs_color, short *bright) {
 	int i;
 
-	for(i = 0; i < SCN_TOTAL_ANSI_COLORS; i++) {
-		if( vterm_color_equal(&color, &vterm_ansi_colors[i]) )
+	for (i = 0; i < SCN_TOTAL_ANSI_COLORS; i++) {
+		if (vterm_color_equal(&color, &vterm_ansi_colors[i]))
 			break;
 	}
-	if(i == SCN_TOTAL_ANSI_COLORS) {
-		if( vterm_color_equal(&color, &DEFAULT_COLOR) )
+	if (i == SCN_TOTAL_ANSI_COLORS) {
+		if (vterm_color_equal(&color, &DEFAULT_COLOR))
 			i = -1;
 		else
 			goto fail;
 	}
-	
+
 	color_index_to_curses_color_index(i, curs_color, bright);
 
 	return 0;
 fail:
-	return -1;	
+	return -1;
 }
 
 /* smallest dist^2 determines nearest
@@ -253,9 +252,9 @@ static void to_nearest_curses_color(VTermColor color, short *curs_color, short *
 
 	min_dist_sq = vterm_color_dist_sq(&color, &vterm_ansi_colors[0]);
 	min_index = 0;
-	for(i = 1; i < SCN_TOTAL_ANSI_COLORS; i++) {
+	for (i = 1; i < SCN_TOTAL_ANSI_COLORS; i++) {
 		dist_sq = vterm_color_dist_sq(&color, &vterm_ansi_colors[i]);
-		if(dist_sq <= min_dist_sq) {
+		if (dist_sq <= min_dist_sq) {
 			min_dist_sq = dist_sq;
 			min_index = i;
 		}
@@ -266,35 +265,37 @@ static void to_nearest_curses_color(VTermColor color, short *curs_color, short *
 
 static void to_curses_pair(VTermColor fg, VTermColor bg, attr_t *attr, short *pair) {
 	short curs_fg, curs_bg, bright_fg, bright_bg;
-	
-	if(to_curses_color(fg, &curs_fg, &bright_fg) != 0) {
-		to_nearest_curses_color(fg, &curs_fg, &bright_fg);
-		fprintf(stderr, "to_curses_pair: mapped fg color %d,%d,%d to color %d\n", fg.red, fg.green, fg.blue, curs_fg);
-	}
-	if(to_curses_color(bg, &curs_bg, &bright_bg) != 0) {
-		to_nearest_curses_color(bg, &curs_bg, &bright_bg);
-		fprintf(stderr, "to_curses_pair: mapped bg color %d,%d,%d to color %d\n", bg.red, bg.green, bg.blue, curs_bg);
-	}
-	
-	*pair = SCN_REQ_COLORS*curs_fg + curs_bg;
 
-	if(bright_fg)
+	if (to_curses_color(fg, &curs_fg, &bright_fg) != 0) {
+		to_nearest_curses_color(fg, &curs_fg, &bright_fg);
+		fprintf(stderr, "to_curses_pair: mapped fg color %d,%d,%d to color %d\n", fg.red,
+			fg.green, fg.blue, curs_fg);
+	}
+	if (to_curses_color(bg, &curs_bg, &bright_bg) != 0) {
+		to_nearest_curses_color(bg, &curs_bg, &bright_bg);
+		fprintf(stderr, "to_curses_pair: mapped bg color %d,%d,%d to color %d\n", bg.red,
+			bg.green, bg.blue, curs_bg);
+	}
+
+	*pair = SCN_REQ_COLORS * curs_fg + curs_bg;
+
+	if (bright_fg)
 		*attr |= A_BOLD;
 }
 
 static void to_curses_attr(const VTermScreenCell *cell, attr_t *attr, short *pair) {
 	attr_t result = A_NORMAL;
-	
-	if(cell->attrs.bold != 0)
+
+	if (cell->attrs.bold != 0)
 		result |= A_BOLD;
 
-	if(cell->attrs.underline != 0)
+	if (cell->attrs.underline != 0)
 		result |= A_UNDERLINE;
 
-	if(cell->attrs.blink != 0)
+	if (cell->attrs.blink != 0)
 		result |= A_BLINK;
 
-	if(cell->attrs.reverse != 0)
+	if (cell->attrs.reverse != 0)
 		result |= A_REVERSE;
 
 	to_curses_pair(cell->fg, cell->bg, &result, pair);
@@ -315,20 +316,21 @@ static void update_cell(VTermScreen *vts, VTermPos pos) {
 	/* sometimes this happens when
 	 * a window resize recently happened
 	 */
-	if(!contained(pos.row, pos.col) ) {
-		fprintf(stderr, "tried to update out of bounds cell at %d/%d %d/%d\n", pos.row, maxy-1, pos.col, maxx-1);
+	if (!contained(pos.row, pos.col)) {
+		fprintf(stderr, "tried to update out of bounds cell at %d/%d %d/%d\n", pos.row,
+			maxy - 1, pos.col, maxx - 1);
 		return;
 	}
 
-	vterm_screen_get_cell(vts, pos, &cell);	
+	vterm_screen_get_cell(vts, pos, &cell);
 	to_curses_attr(&cell, &attr, &pair);
 
-	wch = (cell.chars[0] == 0)? &erasech : (wchar_t *) &cell.chars[0];
-	if(setcchar(&cch, wch, attr, pair, NULL) == ERR)
+	wch = (cell.chars[0] == 0) ? &erasech : (wchar_t *)&cell.chars[0];
+	if (setcchar(&cch, wch, attr, pair, NULL) == ERR)
 		err_exit(0, "setcchar failed");
 
-	if(move(pos.row, pos.col) == ERR)
-		err_exit(0, "move failed: %d/%d, %d/%d\n", pos.row, maxy-1, pos.col, maxx-1);
+	if (move(pos.row, pos.col) == ERR)
+		err_exit(0, "move failed: %d/%d, %d/%d\n", pos.row, maxy - 1, pos.col, maxx - 1);
 
 	/*if(in_wch(&cur_cch) == ERR)
 		err_exit(0, "in_wch failed");
@@ -337,37 +339,32 @@ static void update_cell(VTermScreen *vts, VTermPos pos) {
 		return;
 	}*/
 
-	if(add_wch(&cch) == ERR && pos.row != (maxy-1) && pos.col != (maxx-1) )
-		err_exit(0, "add_wch failed at %d/%d, %d/%d: ", pos.row, maxy-1, pos.col, maxx-1);
-
+	if (add_wch(&cch) == ERR && pos.row != (maxy - 1) && pos.col != (maxx - 1))
+		err_exit(0, "add_wch failed at %d/%d, %d/%d: ", pos.row, maxy - 1, pos.col,
+			 maxx - 1);
 }
 
 void screen_damage_win() {
-	VTermRect win = {
-		.start_row = 0,
-		.start_col = 0,
-		.end_row = 0,
-		.end_col = 0
-	};
+	VTermRect win = {.start_row = 0, .start_col = 0, .end_row = 0, .end_col = 0};
 
-	screen_dims((unsigned short *) &win.end_row, (unsigned short *) &win.end_col);
+	screen_dims((unsigned short *)&win.end_row, (unsigned short *)&win.end_col);
 	screen_damage(win, NULL);
 }
 
 void screen_redraw() {
-	if(redrawwin(stdscr) == ERR)
+	if (redrawwin(stdscr) == ERR)
 		err_exit(0, "redrawwin failed!");
 }
 
 void screen_refresh() {
-	if(refresh() == ERR)
+	if (refresh() == ERR)
 		err_exit(0, "refresh failed!");
 }
 
 int screen_damage(VTermRect rect, void *user) {
 	VTermScreen *vts = vterm_obtain_screen(g_vt);
 	VTermPos pos;
-	int x,y,maxx,maxy;
+	int x, y, maxx, maxy;
 
 	(void)(user); /* user not used */
 
@@ -375,43 +372,46 @@ int screen_damage(VTermRect rect, void *user) {
 	getyx(stdscr, y, x);
 	getmaxyx(stdscr, maxy, maxx);
 
-	for(pos.row = rect.start_row; pos.row < rect.end_row; pos.row++) {
-		for(pos.col = rect.start_col; pos.col < rect.end_col; pos.col++) {
+	for (pos.row = rect.start_row; pos.row < rect.end_row; pos.row++) {
+		for (pos.col = rect.start_col; pos.col < rect.end_col; pos.col++) {
 			update_cell(vts, pos);
 		}
 	}
 
 	/* restore cursor (repainting shouldnt modify cursor) */
-	if(move(y,x) == ERR) 
+	if (move(y, x) == ERR)
 		err_exit(0, "move failed: %d/%d %d/%d", y, maxy, x, maxx);
 
-	/*fprintf(stderr, "\tdamage: (%d,%d) (%d,%d) \n", rect.start_row, rect.start_col, rect.end_row, rect.end_col);*/
+	/*fprintf(stderr, "\tdamage: (%d,%d) (%d,%d) \n", rect.start_row, rect.start_col,
+	 * rect.end_row, rect.end_col);*/
 
 	return 1;
 }
 
 /*
 int screen_moverect(VTermRect dest, VTermRect src, void *user) {
-	
-	//err_exit(0, "moverect called: dest={%d,%d,%d,%d}, src={%d,%d,%d,%d} (%d,%d)", dest.start_row, dest.start_col, dest.end_row, dest.end_col, src.start_row, src.start_col, src.end_row, src.end_col, maxy, maxx);
-	return 0;
+
+	//err_exit(0, "moverect called: dest={%d,%d,%d,%d}, src={%d,%d,%d,%d} (%d,%d)",
+dest.start_row, dest.start_col, dest.end_row, dest.end_col, src.start_row, src.start_col,
+src.end_row, src.end_col, maxy, maxx); return 0;
 }*/
 
 int screen_movecursor(VTermPos pos, VTermPos oldpos, int visible, void *user) {
-	(void)(user); /* user is not used */
+	(void)(user);   /* user is not used */
 	(void)(oldpos); /* oldpos not used */
 	(void)(visible);
-		
+
 	/* sometimes this happens when
 	 * a window resize recently happened
 	 */
-	if(!contained(pos.row, pos.col) ) {
-		fprintf(stderr, "tried to move cursor out of bounds to %d/%d %d/%d\n", pos.row, LINES-1, pos.col, COLS-1);
+	if (!contained(pos.row, pos.col)) {
+		fprintf(stderr, "tried to move cursor out of bounds to %d/%d %d/%d\n", pos.row,
+			LINES - 1, pos.col, COLS - 1);
 		return 1;
 	}
 
-	if(move(pos.row, pos.col) == ERR)
-		err_exit(0, "move failed: %d/%d %d/%d", pos.row, LINES-1, pos.col, COLS-1);
+	if (move(pos.row, pos.col) == ERR)
+		err_exit(0, "move failed: %d/%d %d/%d", pos.row, LINES - 1, pos.col, COLS - 1);
 
 	/*fprintf(stderr, "\tmove cursor: %d, %d\n", pos.row, pos.col);*/
 
@@ -421,7 +421,7 @@ int screen_movecursor(VTermPos pos, VTermPos oldpos, int visible, void *user) {
 int screen_bell(void *user) {
 	(void)(user);
 
-	if(beep() == ERR) {
+	if (beep() == ERR) {
 		fprintf(stderr, "bell failed\n");
 	}
 
@@ -432,16 +432,16 @@ int screen_bell(void *user) {
 }
 
 int screen_settermprop(VTermProp prop, VTermValue *val, void *user) {
-	
+
 	(void)(user);
 
 	/*fprintf(stderr, "settermprop: %d", prop);*/
-	switch(prop) { 
+	switch (prop) {
 	case VTERM_PROP_CURSORVISIBLE:
 		/* fprintf(stderr, " (CURSORVISIBLE) = %02x", val->boolean); */
 		/* will return ERR if cursor not supported, *
 		 * so we dont bother checking return value  */
-		curs_set(!!val->boolean); 
+		curs_set(!!val->boolean);
 		break;
 	case VTERM_PROP_CURSORBLINK: /* not sure if ncurses can change blink settings */
 		/* fprintf(stderr, " (CURSORBLINK) = %02x", val->boolean); */
@@ -452,8 +452,7 @@ int screen_settermprop(VTermProp prop, VTermValue *val, void *user) {
 	case VTERM_PROP_CURSORSHAPE: /* dont think curses can change cursor shape */
 		/* fprintf(stderr, " (CURSORSHAPE) = %d", val->number); */
 		break;
-	default:
-		;
+	default:;
 	}
 
 	/* fprintf(stderr, "\n"); */
@@ -466,9 +465,9 @@ int screen_settermprop(VTermProp prop, VTermValue *val, void *user) {
  * to fully rewrite the screen.
  */
 void screen_resize() {
-	if(endwin() == ERR)
+	if (endwin() == ERR)
 		err_exit(0, "endwin failed!");
 
-	if(refresh() == ERR)
+	if (refresh() == ERR)
 		err_exit(0, "refresh failed!");
 }
