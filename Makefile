@@ -19,6 +19,8 @@ TESTS 			= $(notdir $(patsubst %.c, %, $(wildcard ./test/*.c) ) )
 TEST_OUTPUTS	= $(foreach test, $(TESTS), $(BUILD)/$(test))
 TEST_OBJECTS	= $(OBJECTS)
 
+CLANG_FORMAT    ?= clang-format
+
 default: all
 
 .PHONY: all
@@ -78,3 +80,7 @@ clean:
 .PHONY: libclean
 libclean: clean
 	rm -rf ./libvterm
+
+.PHONY: format
+format:
+	$(CLANG_FORMAT) -i src/* test/*
