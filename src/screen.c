@@ -83,7 +83,10 @@ void screen_set_term(VTerm *term) {
 				       (VTermColor *)&DEFAULT_COLOR);
 }
 
-void screen_dims(unsigned short *rows, unsigned short *cols) { getmaxyx(stdscr, *rows, *cols); }
+void screen_dims(unsigned short *rows, unsigned short *cols) {
+	getmaxyx(stdscr, *rows, *cols);
+	*rows -= 1;
+}
 
 int screen_getch(int *ch) {
 	*ch = getch();

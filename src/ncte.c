@@ -45,6 +45,16 @@
 
 #include "vterm.h"
 
+#if defined(__APPLE__)
+#include <ncurses.h>
+#else
+#include <ncursesw/curses.h>
+#endif
+
+#include "vterm.h"
+#include "vterm_ansi_colors.h"
+#include "vterm_util.h"
+
 #include "err.h"
 #include "opt.h"
 #include "screen.h"
@@ -168,6 +178,9 @@ void loop(VTerm *vt, int master) {
 	struct timeval tv_select;
 	struct timeval *tv_select_p;
 
+	int x, y, maxx, maxy;
+	VTermColor fg, bg;
+
 	timer_init(&inter_io_timer);
 	timer_init(&refresh_expire);
 	/* dont initially need to worry about inter_io_timer's need to timeout */
@@ -224,6 +237,24 @@ void loop(VTerm *vt, int master) {
 		 * refreshing the screen with stuff that just gets scrolled off
 		 */
 		if (force_refresh != 0 || (status = timer_thresh(&inter_io_timer, 0, 10000)) == 1) {
+			getyx(stdscr, y, x);
+			getmaxyx(stdscr, maxy, maxx);
+			// fg.red = 1;
+			// fg.green = 1;
+			// fg.blue = 1;
+			// bg.red = 1;
+			// bg.green = 0;
+			// bg.blue = 0;
+			// to_curses_pair(fg, bg, &attr, &pair);
+
+			attron(COLOR_PAIR(4));
+			mvhline(maxy - 1, 0, ' ', maxx);
+			mvprintw(maxy - 1, maxx - 7, "Hello!");
+			attroff(COLOR_PAIR(4));
+
+			if (move(y, x) == ERR)
+				err_exit(0, "move failed: %d/%d %d/%d", y, maxy, x, maxx);
+
 			screen_refresh();
 			timer_init(&inter_io_timer);
 			timer_init(&refresh_expire);
