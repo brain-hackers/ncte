@@ -400,7 +400,7 @@ src.end_row, src.end_col, maxy, maxx); return 0;
 }*/
 
 int screen_movecursor(VTermPos pos, VTermPos oldpos, int visible, void *user) {
-	(void)(user);   /* user is not used */
+	(void)(user);	/* user is not used */
 	(void)(oldpos); /* oldpos not used */
 	(void)(visible);
 
