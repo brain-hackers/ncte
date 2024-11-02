@@ -172,7 +172,9 @@ static int process_output(VTerm *vt, int master) {
 
 void loop(VTerm *vt, int master) {
 	fd_set in_fds;
-	int status, force_refresh, just_refreshed;
+	int status, force_refresh, just_refreshed, symbol_fd, nfds;
+	bool symbol = false, ctrl = false, alt = false, shift = false;
+	char sysfs_buf;
 
 	struct timer_t inter_io_timer, refresh_expire;
 	struct timeval tv_select;
@@ -186,10 +188,20 @@ void loop(VTerm *vt, int master) {
 	/* dont initially need to worry about inter_io_timer's need to timeout */
 	just_refreshed = 1;
 
+	symbol_fd = open("/sys/devices/soc0/80000000.apb/80040000.apbx/8005a000.i2c/i2c-1/1-0028/input/input3/symbol_activated", O_RDONLY);
+	//symbol_fd = open("/home/takumi/dev/brain/ncte/foo", O_RDONLY);
+	if (symbol_fd == -1) {
+		perror("Failed to open sysfs file");
+		err_exit(errno, "failed to open symbol_activated");
+	}
+
 	while (1) {
 		FD_ZERO(&in_fds);
 		FD_SET(STDIN_FILENO, &in_fds);
 		FD_SET(master, &in_fds);
+		FD_SET(symbol_fd, &in_fds);
+
+		nfds = master > symbol_fd ? master : symbol_fd;
 
 		/* if we just refreshed the screen there
 		 * is no need to timeout the select wait.
@@ -206,7 +218,7 @@ void loop(VTerm *vt, int master) {
 		 * SIGWINCH signals here
 		 */
 		unblock_winch();
-		if (select(master + 1, &in_fds, NULL, NULL, tv_select_p) == -1) {
+		if (select(nfds + 1, &in_fds, NULL, NULL, tv_select_p) == -1) {
 			if (errno == EINTR) {
 				block_winch();
 				continue;
@@ -220,6 +232,11 @@ void loop(VTerm *vt, int master) {
 				return;
 
 			timer_init(&inter_io_timer);
+		} else if (FD_ISSET(symbol_fd, &in_fds)) {
+			lseek(symbol_fd, 0, SEEK_SET);
+			if (read(symbol_fd, &sysfs_buf, 1) > 0) {
+				symbol = sysfs_buf == '1';
+			}
 		}
 
 		/* this is here to make sure really long bursts dont
@@ -249,7 +266,11 @@ void loop(VTerm *vt, int master) {
 
 			attron(COLOR_PAIR(4));
 			mvhline(maxy - 1, 0, ' ', maxx);
-			mvprintw(maxy - 1, maxx - 7, "Hello!");
+			if (symbol) {
+				mvprintw(maxy - 1, maxx - 7, "SYMBOL");
+			} else {
+				mvprintw(maxy - 1, maxx - 7, "      ");
+			}
 			attroff(COLOR_PAIR(4));
 
 			if (move(y, x) == ERR)
