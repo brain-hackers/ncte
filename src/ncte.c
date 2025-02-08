@@ -61,6 +61,7 @@
 #include "timer.h"
 
 #define BUF_SIZE 2048 * 4
+#define ARRAY_SIZE(a) sizeof(a)/sizeof(a[0])
 
 /* globals */
 static struct {
@@ -70,6 +71,32 @@ static struct {
 	char buf[BUF_SIZE];			    /* IO buffer */
 	struct ncte_conf conf;
 } g;
+
+struct toggle_key {
+	char* name;
+	char* path;
+	int fd;
+	bool activated;
+};
+
+struct toggle_key toggle_keys[] = {
+	{
+		.name = "SYMBOL",
+		.path = "/sys/devices/soc0/80000000.apb/80040000.apbx/8005a000.i2c/i2c-1/1-0028/input/input3/symbol_activated",
+	},
+	{
+		.name = "CTRL",
+		.path = "/sys/devices/soc0/80000000.apb/80040000.apbx/8005a000.i2c/i2c-1/1-0028/input/input3/ctrl_activated",
+	},
+	{
+		.name = "ALT",
+		.path = "/sys/devices/soc0/80000000.apb/80040000.apbx/8005a000.i2c/i2c-1/1-0028/input/input3/alt_activated",
+	},
+	{
+		.name = "SHIFT",
+		.path = "/sys/devices/soc0/80000000.apb/80040000.apbx/8005a000.i2c/i2c-1/1-0028/input/input3/shift_activated",
+	},
+};
 
 static int set_nonblocking(int fd) {
 	int opts;
@@ -172,9 +199,9 @@ static int process_output(VTerm *vt, int master) {
 
 void loop(VTerm *vt, int master) {
 	fd_set in_fds;
-	int status, force_refresh, just_refreshed, symbol_fd, nfds;
-	bool symbol = false, ctrl = false, alt = false, shift = false;
+	int status, force_refresh, just_refreshed, nfds, i;
 	char sysfs_buf;
+	char str_buf[64];
 
 	struct timer_t inter_io_timer, refresh_expire;
 	struct timeval tv_select;
@@ -188,20 +215,28 @@ void loop(VTerm *vt, int master) {
 	/* dont initially need to worry about inter_io_timer's need to timeout */
 	just_refreshed = 1;
 
-	symbol_fd = open("/sys/devices/soc0/80000000.apb/80040000.apbx/8005a000.i2c/i2c-1/1-0028/input/input3/symbol_activated", O_RDONLY);
-	//symbol_fd = open("/home/takumi/dev/brain/ncte/foo", O_RDONLY);
-	if (symbol_fd == -1) {
-		perror("Failed to open sysfs file");
-		err_exit(errno, "failed to open symbol_activated");
+	for (i = 0; i < ARRAY_SIZE(toggle_keys); i++) {
+		toggle_keys[i].fd = open(toggle_keys[i].path, O_RDONLY);
+		if (toggle_keys[i].fd == -1) {
+			sprintf(str_buf, "Failed to open sysfs file of %s", toggle_keys[i].name);
+			perror(str_buf);
+			err_exit(errno, "failed to open symbol_activated");
+		}
 	}
 
 	while (1) {
 		FD_ZERO(&in_fds);
 		FD_SET(STDIN_FILENO, &in_fds);
 		FD_SET(master, &in_fds);
-		FD_SET(symbol_fd, &in_fds);
 
-		nfds = master > symbol_fd ? master : symbol_fd;
+		nfds = master;
+
+		for (i = 0; i < ARRAY_SIZE(toggle_keys); i++) {
+			FD_SET(toggle_keys[i].fd, &in_fds);
+			if (nfds < toggle_keys[i].fd) {
+				nfds = toggle_keys[i].fd;
+			}
+		}
 
 		/* if we just refreshed the screen there
 		 * is no need to timeout the select wait.
@@ -232,10 +267,14 @@ void loop(VTerm *vt, int master) {
 				return;
 
 			timer_init(&inter_io_timer);
-		} else if (FD_ISSET(symbol_fd, &in_fds)) {
-			lseek(symbol_fd, 0, SEEK_SET);
-			if (read(symbol_fd, &sysfs_buf, 1) > 0) {
-				symbol = sysfs_buf == '1';
+		}
+
+		for (i = 0; i < ARRAY_SIZE(toggle_keys); i++) {
+			if(FD_ISSET(toggle_keys[i].fd, &in_fds)) {
+				lseek(toggle_keys[i].fd, 0, SEEK_SET);
+				if (read(toggle_keys[i].fd, &sysfs_buf, 1) > 0) {
+					toggle_keys[i].activated = sysfs_buf == '1';
+				}
 			}
 		}
 
@@ -266,11 +305,17 @@ void loop(VTerm *vt, int master) {
 
 			attron(COLOR_PAIR(4));
 			mvhline(maxy - 1, 0, ' ', maxx);
-			if (symbol) {
-				mvprintw(maxy - 1, maxx - 7, "SYMBOL");
-			} else {
-				mvprintw(maxy - 1, maxx - 7, "      ");
+
+			for (i = 0; i < ARRAY_SIZE(toggle_keys); i++) {
+				if (toggle_keys[i].activated) {
+					mvprintw(maxy - 1, maxx - strlen(toggle_keys[i].name), toggle_keys[i].name);
+				} else {
+					memset(str_buf, '\0', sizeof(str_buf));
+					memset(str_buf, ' ', strlen(toggle_keys[i].name));
+					mvprintw(maxy - 1, maxx - 7, str_buf);
+				}
 			}
+
 			attroff(COLOR_PAIR(4));
 
 			if (move(y, x) == ERR)
